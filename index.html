@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Marauder's Chart</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #07070e;
+  color: #c8c8c8;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  overflow-x: hidden;
+  padding: 32px 20px 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+}
+
+#header {
+  width: 100%;
+  max-width: 1440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+#eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #333;
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: normal;
+  letter-spacing: 0.08em;
+  color: #e0e0e0;
+}
+
+#char-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.char-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin: 0 8px;
+  transition: opacity 0.2s, transform 0.15s;
+  position: relative;
+  z-index: 1;
+}
+
+.char-btn:hover { transform: translateY(-3px); z-index: 10; }
+.char-btn.off   { opacity: 0.25; }
+
+.char-avatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  background: #111;
+  box-shadow: 0 0 12px rgba(0,0,0,0.7);
+}
+
+.char-name {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: 'Georgia', serif;
+  opacity: 0.8;
+}
+
+#stats {
+  font-size: 10.5px;
+  color: #2e2e3e;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+#canvas-wrap {
+  width: 100%;
+  max-width: 1440px;
+  position: relative;
+  cursor: crosshair;
+}
+
+canvas { display: block; width: 100%; }
+
+#tooltip {
+  position: fixed;
+  background: rgba(9, 9, 18, 0.96);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 10px 15px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  line-height: 1.8;
+  pointer-events: none;
+  display: none;
+  z-index: 999;
+  white-space: nowrap;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+}
+
+#book-labels {
+  width: 100%;
+  max-width: 1440px;
+  display: flex;
+  margin-top: 8px;
+}
+
+.blabel {
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #555570;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+  text-transform: uppercase;
+  transition: color 0.2s;
+}
+
+.blabel:hover { color: #888; }
+
+#footnote {
+  margin-top: 36px;
+  font-size: 10px;
+  color: #666680;
+  letter-spacing: 0.08em;
+  text-align: center;
+  line-height: 2;
+  max-width: 600px;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>The Marauder's Chart</h1>
+  <div id="char-toggles"></div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+</div>
+<div id="book-labels"></div>
+
+<div id="tooltip"></div>
+
+<div id="footnote">
+  Harry Potter · 7 Books · 3,407 Pages<br>
+  Every page. Every line. Each mark is an approximate mention.<br>
+  Position maps page (left → right) and line (top → bottom).<br>
+  Click a character to show or hide their marks.
+</div>
+
+<script>
+'use strict';
+
+// ── Book data (UK edition page counts) ──────────────────────────────────────
+
+const BOOKS = [
+  { name: "The Philosopher's Stone",  short: "I",    pages: 223, chaps: 17 },
+  { name: "The Chamber of Secrets",   short: "II",   pages: 251, chaps: 18 },
+  { name: "The Prisoner of Azkaban",  short: "III",  pages: 317, chaps: 22 },
+  { name: "The Goblet of Fire",       short: "IV",   pages: 636, chaps: 37 },
+  { name: "The Order of the Phoenix", short: "V",    pages: 766, chaps: 38 },
+  { name: "The Half-Blood Prince",    short: "VI",   pages: 607, chaps: 30 },
+  { name: "The Deathly Hallows",      short: "VII",  pages: 607, chaps: 36 },
+];
+
+const TOTAL_PAGES = BOOKS.reduce((s, b) => s + b.pages, 0); // 3407
+
+// ── Character definitions ────────────────────────────────────────────────────
+
+const CHARS = [
+  {
+    name:   'Harry',
+    color:  '#FFE566',
+    emoji:  '⚡',
+    img:    'Images/Harry.png',
+    counts: [580, 680, 870, 1450, 1900, 1350, 1750],
+    density(bi, pos) {
+      // protagonist — relatively uniform, rises toward climax
+      return 0.55 + 0.45 * ss(0.58, 1.0, pos);
+    },
+  },
+  {
+    name:   'Ron',
+    color:  '#FF7043',
+    emoji:  '🦁',
+    img:    'Images/Ron.png',
+    counts: [195, 210, 260, 490, 630, 440, 370],
+    density(bi, pos) {
+      // absent for ~middle third of Deathly Hallows (deserts Harry)
+      if (bi === 6 && pos > 0.30 && pos < 0.60) return 0.04;
+      return 0.45 + 0.55 * ss(0.65, 1.0, pos);
+    },
+  },
+  {
+    name:   'Hermione',
+    color:  '#CE93D8',
+    emoji:  '📚',
+    img:    'Images/Hermione.png',
+    counts: [175, 195, 265, 440, 570, 375, 510],
+    density(bi, pos) {
+      return 0.48 + 0.52 * ss(0.65, 1.0, pos);
+    },
+  },
+  {
+    name:   'Voldemort',
+    color:  '#69F0AE',
+    emoji:  '🐍',
+    img:    'Images/Voldemort.png',
+    counts: [22, 16, 36, 135, 92, 110, 180],
+    density(bi, pos) {
+      if (bi < 3) {
+        return pos < 0.72 ? 0.008 : ss(0.72, 1.0, pos);
+      }
+      if (bi === 3) {
+        if (pos > 0.80) return 2.2;
+        if (pos > 0.50) return 0.55;
+        return 0.25;
+      }
+      return 0.35 + 0.65 * ss(0.42, 1.0, pos);
+    },
+  },
+  {
+    name:   'Snape',
+    color:  '#90CAF9',
+    emoji:  '🧪',
+    counts: [80, 50, 90, 42, 120, 200, 150],
+    img:    'Images/Snape.png',
+    density(bi, pos) {
+      if (bi === 5) {
+        // Half-Blood Prince — present throughout, peaks at climax (his reveal)
+        return 0.55 + 0.45 * ss(0.55, 1.0, pos);
+      }
+      if (bi === 6) {
+        // Deathly Hallows — backstory revealed midway (Prince's Tale chapter)
+        if (pos > 0.60 && pos < 0.72) return 1.8;
+        return 0.35 + 0.65 * ss(0.50, 1.0, pos);
+      }
+      return 0.40 + 0.60 * ss(0.60, 1.0, pos);
+    },
+  },
+  {
+    name:   'Bellatrix',
+    color:  '#FF1744',
+    emoji:  '🖤',
+    img:    'Images/Bellatrix.png',
+    counts: [0, 0, 0, 18, 85, 95, 120],
+    density(bi, pos) {
+      if (bi < 3) return 0;
+      if (bi === 3) {
+        // Goblet of Fire — mentioned in Pensieve/Azkaban flashback
+        return pos > 0.55 ? 0.4 : 0.05;
+      }
+      if (bi === 4) {
+        // Order of Phoenix — escapes Azkaban, battles at Dept of Mysteries
+        if (pos > 0.82) return 1.8;
+        return 0.30 + 0.70 * ss(0.50, 1.0, pos);
+      }
+      if (bi === 5) {
+        // Half-Blood Prince — fewer appearances
+        return 0.35 + 0.65 * ss(0.60, 1.0, pos);
+      }
+      // Deathly Hallows — major villain, killed by Molly at end
+      if (pos > 0.88) return 1.6;
+      return 0.40 + 0.60 * ss(0.45, 1.0, pos);
+    },
+  },
+  {
+    name:   'Dumbledore',
+    color:  '#F48FB1',
+    emoji:  '✨',
+    counts: [70, 55, 80, 150, 200, 180, 105],
+    img:    'Images/Dumbeldore.png',
+    density(bi, pos) {
+      if (bi === 5) {
+        // Order of Phoenix — major presence, duel with Voldemort at end
+        return 0.50 + 0.50 * ss(0.45, 1.0, pos);
+      }
+      if (bi === 6) {
+        // Half-Blood Prince — dies at ~85%; absent after
+        if (pos > 0.87) return 0.05;
+        return 0.55 + 0.45 * ss(0.40, 0.87, pos);
+      }
+      return 0.42 + 0.58 * ss(0.55, 1.0, pos);
+    },
+  },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function ss(e0, e1, x) {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+// deterministic xorshift32 PRNG
+function mkRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+    return (s >>> 0) / 4294967296;
+  };
+}
+
+function hexToRGB(h) {
+  return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+}
+
+// ── Data generation ──────────────────────────────────────────────────────────
+
+function generate() {
+  const rng   = mkRng(0xdeadbeef);
+  const byChar = {};
+  CHARS.forEach(c => byChar[c.name] = []);
+
+  let pageOff = 0;
+
+  for (let bi = 0; bi < BOOKS.length; bi++) {
+    const { pages, chaps } = BOOKS[bi];
+
+    for (const ch of CHARS) {
+      const target  = ch.counts[bi];
+      const arr     = byChar[ch.name];
+      const maxW    = (ch.name === 'Voldemort' && bi === 3) ? 2.5 :
+                      (ch.name === 'Voldemort' && bi < 3)   ? 1.1 :
+                      (ch.name === 'Snape'     && bi === 6) ? 2.0 : 2.5;
+      const maxTries = target * 40;
+      let done = 0, tries = 0;
+
+      while (done < target && tries < maxTries) {
+        tries++;
+        const pos  = rng();
+        const w    = ch.density(bi, pos);
+        if (rng() * maxW >= w) continue;   // rejection sample
+
+        arr.push({
+          bi,
+          globalPage: pageOff + pos * pages,
+          line:       Math.floor(rng() * 40) + 1,
+          chap:       Math.max(1, Math.min(chaps, Math.ceil(pos * chaps))),
+        });
+        done++;
+      }
+
+      // fallback: uniform fill if rejection sampling ran out of attempts
+      while (done < target) {
+        const pos = rng();
+        arr.push({
+          bi,
+          globalPage: pageOff + pos * pages,
+          line:       Math.floor(rng() * 40) + 1,
+          chap:       Math.max(1, Math.min(chaps, Math.ceil(pos * chaps))),
+        });
+        done++;
+      }
+    }
+
+    pageOff += pages;
+  }
+
+  return byChar;
+}
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const TT     = document.getElementById('tooltip');
+
+const H_CV   = 540;
+const PAD    = { t: 18, r: 18, b: 30, l: 18 };
+const DOT_R  = 1.6;
+const GLOW_R = 5.0;
+
+let W, drawW, drawH;
+let visible = {};
+let data;
+
+CHARS.forEach(c => visible[c.name] = true);
+
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  W     = wrap.clientWidth;
+  drawW = W - PAD.l - PAD.r;
+  drawH = H_CV - PAD.t - PAD.b;
+  canvas.width  = W;
+  canvas.height = H_CV;
+}
+
+function px(gp)   { return PAD.l + (gp / TOTAL_PAGES) * drawW; }
+function py(line) { return PAD.t + ((line - 1) / 39) * drawH; }
+
+// ── Draw ─────────────────────────────────────────────────────────────────────
+
+function draw() {
+  ctx.clearRect(0, 0, W, H_CV);
+  ctx.fillStyle = '#07070e';
+  ctx.fillRect(0, 0, W, H_CV);
+
+  // Book bands and dividers
+  let off = 0;
+  for (let bi = 0; bi < BOOKS.length; bi++) {
+    const x0 = px(off);
+    const x1 = px(off + BOOKS[bi].pages);
+
+    // subtle alternating tint
+    ctx.fillStyle = bi % 2 === 0 ? 'rgba(255,255,255,0.011)' : 'rgba(0,0,0,0)';
+    ctx.fillRect(x0, PAD.t, x1 - x0, drawH);
+
+    // divider
+    if (bi > 0) {
+      ctx.save();
+      ctx.setLineDash([2, 5]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, PAD.t); ctx.lineTo(x0, PAD.t + drawH); ctx.stroke();
+      ctx.restore();
+    }
+
+    // ghost book numeral
+    const mid = (x0 + x1) / 2;
+    const sz  = Math.max(10, Math.min(64, (x1 - x0) * 0.48));
+    ctx.fillStyle      = 'rgba(255,255,255,0.032)';
+    ctx.font           = `italic ${sz}px Georgia`;
+    ctx.textAlign      = 'center';
+    ctx.textBaseline   = 'middle';
+    ctx.fillText(BOOKS[bi].short, mid, PAD.t + drawH / 2);
+
+    off += BOOKS[bi].pages;
+  }
+
+  const ORDER = ['Harry', 'Ron', 'Hermione', 'Dumbledore', 'Snape', 'Bellatrix', 'Voldemort'];
+
+  for (const name of ORDER) {
+    if (!visible[name]) continue;
+    const ch    = CHARS.find(c => c.name === name);
+    const arr   = data[name];
+    const [r, g, b] = hexToRGB(ch.color);
+
+    // glow halo
+    ctx.fillStyle = `rgba(${r},${g},${b},0.055)`;
+    ctx.beginPath();
+    for (const m of arr) {
+      const x = px(m.globalPage), y = py(m.line);
+      ctx.moveTo(x + GLOW_R, y);
+      ctx.arc(x, y, GLOW_R, 0, Math.PI * 2);
+    }
+    ctx.fill();
+
+    // solid dot
+    ctx.fillStyle = `rgba(${r},${g},${b},0.72)`;
+    ctx.beginPath();
+    for (const m of arr) {
+      const x = px(m.globalPage), y = py(m.line);
+      ctx.moveTo(x + DOT_R, y);
+      ctx.arc(x, y, DOT_R, 0, Math.PI * 2);
+    }
+    ctx.fill();
+  }
+}
+
+// ── UI ───────────────────────────────────────────────────────────────────────
+
+function buildToggles() {
+  const wrap = document.getElementById('char-toggles');
+  CHARS.forEach(ch => {
+    const btn = document.createElement('button');
+    btn.className = 'char-btn';
+    btn.dataset.name = ch.name;
+
+    const img = document.createElement('img');
+    img.className = 'char-avatar';
+    img.src = ch.img;
+    img.alt = ch.name;
+    img.style.borderColor = ch.color;
+
+    const label = document.createElement('span');
+    label.className = 'char-name';
+    label.style.color = ch.color;
+    label.textContent = ch.name;
+
+    btn.appendChild(img);
+    btn.appendChild(label);
+
+    btn.addEventListener('click', () => {
+      visible[ch.name] = !visible[ch.name];
+      btn.classList.toggle('off', !visible[ch.name]);
+      draw();
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+function buildBookLabels() {
+  const wrap = document.getElementById('book-labels');
+  wrap.innerHTML = '';
+  BOOKS.forEach(b => {
+    const el = document.createElement('div');
+    el.className = 'blabel';
+    el.style.width   = (b.pages / TOTAL_PAGES * 100) + '%';
+    el.textContent   = b.name;
+    wrap.appendChild(el);
+  });
+}
+
+
+// ── Tooltip ──────────────────────────────────────────────────────────────────
+
+function bookAtPage(gp) {
+  let off = 0;
+  for (let bi = 0; bi < BOOKS.length; bi++) {
+    const next = off + BOOKS[bi].pages;
+    if (gp < next || bi === BOOKS.length - 1) {
+      const rel  = gp - off;
+      const page = Math.floor(rel) + 1;
+      const chap = Math.max(1, Math.min(BOOKS[bi].chaps, Math.ceil((rel / BOOKS[bi].pages) * BOOKS[bi].chaps)));
+      return { bi, book: BOOKS[bi], page, chap };
+    }
+    off = next;
+  }
+}
+
+let pendingEvt = null, rafPending = false;
+
+canvas.addEventListener('mousemove', e => {
+  pendingEvt = e;
+  if (!rafPending) { rafPending = true; requestAnimationFrame(onMouseMove); }
+});
+canvas.addEventListener('mouseleave', () => { TT.style.display = 'none'; });
+
+function onMouseMove() {
+  rafPending = false;
+  const e    = pendingEvt;
+  const rect = canvas.getBoundingClientRect();
+  const scX  = canvas.width / rect.width;
+  const scY  = canvas.height / rect.height;
+  const mx   = (e.clientX - rect.left) * scX;
+  const my   = (e.clientY - rect.top)  * scY;
+
+  const gp = ((mx - PAD.l) / drawW) * TOTAL_PAGES;
+  if (gp < 0 || gp > TOTAL_PAGES) { TT.style.display = 'none'; return; }
+
+  // find nearest visible mention within 12px
+  const LIMIT_SQ = 144;
+  let bestDsq = LIMIT_SQ, bestM = null, bestChar = null;
+
+  for (const ch of CHARS) {
+    if (!visible[ch.name]) continue;
+    for (const m of data[ch.name]) {
+      const dx = px(m.globalPage) - mx;
+      if (Math.abs(dx) > 12) continue;     // fast x-cull
+      const dy  = py(m.line) - my;
+      const dsq = dx*dx + dy*dy;
+      if (dsq < bestDsq) { bestDsq = dsq; bestM = m; bestChar = ch; }
+    }
+  }
+
+  if (bestM) {
+    const info = bookAtPage(bestM.globalPage);
+    TT.innerHTML =
+      `<span style="color:${bestChar.color};font-weight:bold">${bestChar.name}</span><br>` +
+      `<span style="color:#555">${info.book.name}</span><br>` +
+      `Page ~${info.page} &nbsp;·&nbsp; Chapter ${info.chap}`;
+  } else {
+    const info = bookAtPage(gp);
+    TT.innerHTML =
+      `<span style="color:#444">${info.book.name}</span><br>` +
+      `<span style="color:#333">Page ~${info.page}</span>`;
+  }
+
+  TT.style.display = 'block';
+  TT.style.left    = (e.clientX + 16) + 'px';
+  TT.style.top     = (e.clientY - 8)  + 'px';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+data = generate();
+resize();
+buildToggles();
+buildBookLabels();
+draw();
+
+window.addEventListener('resize', () => { resize(); buildBookLabels(); draw(); });
+</script>
+</body>
+</html>
