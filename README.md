@@ -4,6 +4,8 @@ An interactive data visualisation of character mentions across all 7 Harry Potte
 
 Every page. Every line. Each mark is an approximate mention — positioned by page (left → right) and line (top → bottom).
 
+**[Try it live on GitHub Pages](https://nebinbiju1.github.io/the-marauders-chart/)** — or download `index.html` and open it directly in any browser, no server needed.
+
 ## Characters
 
 | Character | Colour |
