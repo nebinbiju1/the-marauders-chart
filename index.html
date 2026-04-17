@@ -176,6 +176,8 @@ canvas { display: block; width: 100%; }
 <script>
 'use strict';
 
+const RAW = 'https://raw.githubusercontent.com/nebinbiju1/the-marauders-chart/main/Images/';
+
 // ── Book data (UK edition page counts) ──────────────────────────────────────
 
 const BOOKS = [
@@ -197,10 +199,9 @@ const CHARS = [
     name:   'Harry',
     color:  '#FFE566',
     emoji:  '⚡',
-    img:    'Images/Harry.png',
+    img:    RAW + 'Harry.png',
     counts: [580, 680, 870, 1450, 1900, 1350, 1750],
     density(bi, pos) {
-      // protagonist — relatively uniform, rises toward climax
       return 0.55 + 0.45 * ss(0.58, 1.0, pos);
     },
   },
@@ -208,10 +209,9 @@ const CHARS = [
     name:   'Ron',
     color:  '#FF7043',
     emoji:  '🦁',
-    img:    'Images/Ron.png',
+    img:    RAW + 'Ron.png',
     counts: [195, 210, 260, 490, 630, 440, 370],
     density(bi, pos) {
-      // absent for ~middle third of Deathly Hallows (deserts Harry)
       if (bi === 6 && pos > 0.30 && pos < 0.60) return 0.04;
       return 0.45 + 0.55 * ss(0.65, 1.0, pos);
     },
@@ -220,7 +220,7 @@ const CHARS = [
     name:   'Hermione',
     color:  '#CE93D8',
     emoji:  '📚',
-    img:    'Images/Hermione.png',
+    img:    RAW + 'Hermione.png',
     counts: [175, 195, 265, 440, 570, 375, 510],
     density(bi, pos) {
       return 0.48 + 0.52 * ss(0.65, 1.0, pos);
@@ -230,7 +230,7 @@ const CHARS = [
     name:   'Voldemort',
     color:  '#69F0AE',
     emoji:  '🐍',
-    img:    'Images/Voldemort.png',
+    img:    RAW + 'Voldemort.png',
     counts: [22, 16, 36, 135, 92, 110, 180],
     density(bi, pos) {
       if (bi < 3) {
@@ -249,14 +249,12 @@ const CHARS = [
     color:  '#90CAF9',
     emoji:  '🧪',
     counts: [80, 50, 90, 42, 120, 200, 150],
-    img:    'Images/Snape.png',
+    img:    RAW + 'Snape.png',
     density(bi, pos) {
       if (bi === 5) {
-        // Half-Blood Prince — present throughout, peaks at climax (his reveal)
         return 0.55 + 0.45 * ss(0.55, 1.0, pos);
       }
       if (bi === 6) {
-        // Deathly Hallows — backstory revealed midway (Prince's Tale chapter)
         if (pos > 0.60 && pos < 0.72) return 1.8;
         return 0.35 + 0.65 * ss(0.50, 1.0, pos);
       }
@@ -267,24 +265,20 @@ const CHARS = [
     name:   'Bellatrix',
     color:  '#FF1744',
     emoji:  '🖤',
-    img:    'Images/Bellatrix.png',
+    img:    RAW + 'Bellatrix.png',
     counts: [0, 0, 0, 18, 85, 95, 120],
     density(bi, pos) {
       if (bi < 3) return 0;
       if (bi === 3) {
-        // Goblet of Fire — mentioned in Pensieve/Azkaban flashback
         return pos > 0.55 ? 0.4 : 0.05;
       }
       if (bi === 4) {
-        // Order of Phoenix — escapes Azkaban, battles at Dept of Mysteries
         if (pos > 0.82) return 1.8;
         return 0.30 + 0.70 * ss(0.50, 1.0, pos);
       }
       if (bi === 5) {
-        // Half-Blood Prince — fewer appearances
         return 0.35 + 0.65 * ss(0.60, 1.0, pos);
       }
-      // Deathly Hallows — major villain, killed by Molly at end
       if (pos > 0.88) return 1.6;
       return 0.40 + 0.60 * ss(0.45, 1.0, pos);
     },
@@ -294,14 +288,12 @@ const CHARS = [
     color:  '#F48FB1',
     emoji:  '✨',
     counts: [70, 55, 80, 150, 200, 180, 105],
-    img:    'Images/Dumbeldore.png',
+    img:    RAW + 'Dumbeldore.png',
     density(bi, pos) {
       if (bi === 5) {
-        // Order of Phoenix — major presence, duel with Voldemort at end
         return 0.50 + 0.50 * ss(0.45, 1.0, pos);
       }
       if (bi === 6) {
-        // Half-Blood Prince — dies at ~85%; absent after
         if (pos > 0.87) return 0.05;
         return 0.55 + 0.45 * ss(0.40, 0.87, pos);
       }
@@ -317,7 +309,6 @@ function ss(e0, e1, x) {
   return t * t * (3 - 2 * t);
 }
 
-// deterministic xorshift32 PRNG
 function mkRng(seed) {
   let s = (seed >>> 0) || 1;
   return () => {
@@ -355,7 +346,7 @@ function generate() {
         tries++;
         const pos  = rng();
         const w    = ch.density(bi, pos);
-        if (rng() * maxW >= w) continue;   // rejection sample
+        if (rng() * maxW >= w) continue;
 
         arr.push({
           bi,
@@ -366,7 +357,6 @@ function generate() {
         done++;
       }
 
-      // fallback: uniform fill if rejection sampling ran out of attempts
       while (done < target) {
         const pos = rng();
         arr.push({
@@ -421,17 +411,14 @@ function draw() {
   ctx.fillStyle = '#07070e';
   ctx.fillRect(0, 0, W, H_CV);
 
-  // Book bands and dividers
   let off = 0;
   for (let bi = 0; bi < BOOKS.length; bi++) {
     const x0 = px(off);
     const x1 = px(off + BOOKS[bi].pages);
 
-    // subtle alternating tint
     ctx.fillStyle = bi % 2 === 0 ? 'rgba(255,255,255,0.011)' : 'rgba(0,0,0,0)';
     ctx.fillRect(x0, PAD.t, x1 - x0, drawH);
 
-    // divider
     if (bi > 0) {
       ctx.save();
       ctx.setLineDash([2, 5]);
@@ -441,7 +428,6 @@ function draw() {
       ctx.restore();
     }
 
-    // ghost book numeral
     const mid = (x0 + x1) / 2;
     const sz  = Math.max(10, Math.min(64, (x1 - x0) * 0.48));
     ctx.fillStyle      = 'rgba(255,255,255,0.032)';
@@ -461,7 +447,6 @@ function draw() {
     const arr   = data[name];
     const [r, g, b] = hexToRGB(ch.color);
 
-    // glow halo
     ctx.fillStyle = `rgba(${r},${g},${b},0.055)`;
     ctx.beginPath();
     for (const m of arr) {
@@ -471,7 +456,6 @@ function draw() {
     }
     ctx.fill();
 
-    // solid dot
     ctx.fillStyle = `rgba(${r},${g},${b},0.72)`;
     ctx.beginPath();
     for (const m of arr) {
@@ -527,7 +511,6 @@ function buildBookLabels() {
   });
 }
 
-
 // ── Tooltip ──────────────────────────────────────────────────────────────────
 
 function bookAtPage(gp) {
@@ -564,7 +547,6 @@ function onMouseMove() {
   const gp = ((mx - PAD.l) / drawW) * TOTAL_PAGES;
   if (gp < 0 || gp > TOTAL_PAGES) { TT.style.display = 'none'; return; }
 
-  // find nearest visible mention within 12px
   const LIMIT_SQ = 144;
   let bestDsq = LIMIT_SQ, bestM = null, bestChar = null;
 
@@ -572,7 +554,7 @@ function onMouseMove() {
     if (!visible[ch.name]) continue;
     for (const m of data[ch.name]) {
       const dx = px(m.globalPage) - mx;
-      if (Math.abs(dx) > 12) continue;     // fast x-cull
+      if (Math.abs(dx) > 12) continue;
       const dy  = py(m.line) - my;
       const dsq = dx*dx + dy*dy;
       if (dsq < bestDsq) { bestDsq = dsq; bestM = m; bestChar = ch; }
